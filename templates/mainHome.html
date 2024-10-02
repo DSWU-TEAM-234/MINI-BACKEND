@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>글쓰기 양식</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+        .bottom-bar {
+            position: fixed;
+            bottom: 0;
+            width: 100%;
+            background-color: #333;
+            color: white;
+            text-align: center;
+            padding: 10px 0;
+        }
+        .write-button {
+            background-color: #f39c12;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .write-button:hover {
+            background-color: #e67e22;
+        }
+        .form-container {
+            display: none;
+            padding: 20px;
+            border: 1px solid #ddd;
+            margin-top: 20px;
+            position: relative;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        input[type="text"], input[type="number"], textarea, select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        input[type="radio"] {
+            margin-right: 5px;
+        }
+        .cancel-button {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background-color: #e74c3c;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .cancel-button:hover {
+            background-color: #c0392b;
+        }
+        #photo-preview, #photo-preview-delegated {
+            display: flex;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+        .photo-item {
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        .photo-item img {
+            width: 50px;
+            height: 50px;
+            object-fit: cover;
+        }
+    </style>
+    <script>
+        // 폼을 열고 중고거래 양식을 기본으로 설정
+        function toggleForm() {
+            document.querySelector('.form-container').style.display = 'block';
+            showTradeForm(); // 처음에 중고거래 폼을 보여줌
+        }
+
+        // 중고거래 양식을 보여주는 함수
+        function showTradeForm() {
+            document.getElementById('trade-form').style.display = 'block';
+            document.getElementById('delegated-form').style.display = 'none'; // 대리구매 폼 숨기기
+            document.querySelector('input[name="post-type"][value="중고거래"]').checked = true;
+        }
+
+        // 대리구매 양식을 보여주는 함수
+        function showDelegatedForm() {
+            document.getElementById('delegated-form').style.display = 'block';
+            document.getElementById('trade-form').style.display = 'none'; // 중고거래 폼 숨기기
+            document.querySelector('input[name="post-type"][value="대리구매"]').checked = true;
+        }
+
+        // 사진 미리보기 업데이트 - 기존 사진을 유지하고 추가적으로 새로운 사진을 추가
+        function updatePhotoPreview(event, previewId) {
+            const files = event.target.files;
+            const photoPreviewContainer = document.getElementById(previewId);
+
+            for (const file of files) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const imgElement = document.createElement('img');
+                    imgElement.src = e.target.result;
+                    const photoItem = document.createElement('div');
+                    photoItem.classList.add('photo-item');
+                    photoItem.appendChild(imgElement);
+                    photoPreviewContainer.appendChild(photoItem);
+                }
+                reader.readAsDataURL(file);
+            }
+        }
+
+        // 취소 버튼 클릭 시 폼을 숨기고 초기화
+        function cancelForm() {
+            document.querySelector('.form-container').style.display = 'none';
+        }
+    </script>
+</head>
+<body>
+
+    <!-- 하단 글쓰기 버튼 -->
+    <div class="bottom-bar">
+        <button class="write-button" onclick="toggleForm()">글쓰기</button>
+    </div>
+
+    <!-- 글쓰기 폼 컨테이너 -->
+    <div class="form-container">
+        <!-- 상단 취소 버튼 -->
+        <button class="cancel-button" onclick="cancelForm()">취소</button>
+
+        <!-- 글의 종류 선택 -->
+        <div class="form-group">
+            <label>글의 종류:</label>
+            <label><input type="radio" name="post-type" value="중고거래" onclick="showTradeForm()"> 중고거래</label>
+            <label><input type="radio" name="post-type" value="대리구매" onclick="showDelegatedForm()"> 대리구매</label>
+        </div>
+
+        <!-- 중고거래 글 양식 -->
+        <div id="trade-form" style="display: none;">
+            <!-- 사진 첨부 -->
+            <div class="form-group">
+                <label>사진 첨부:</label>
+                <input type="file" name="photo" multiple accept="image/*" onchange="updatePhotoPreview(event, 'photo-preview')">
+                <div id="photo-preview"></div>
+            </div>
+
+            <!-- 제목 -->
+            <div class="form-group">
+                <label>제목:</label>
+                <input type="text" name="title">
+            </div>
+
+            <!-- 카테고리 선택 -->
+            <div class="form-group">
+                <label>카테고리:</label>
+                <select name="category">
+                    <option value="electronics">전자제품</option>
+                    <option value="books">도서</option>
+                    <option value="clothing">의류</option>
+                    <option value="other">기타</option>
+                </select>
+            </div>
+
+            <!-- 가격 -->
+            <div class="form-group">
+                <label>가격:</label>
+                <input type="number" name="price">
+            </div>
+
+            <!-- 세부 설명 -->
+            <div class="form-group">
+                <label>세부 설명:</label>
+                <textarea name="description" rows="4"></textarea>
+            </div>
+
+            <!-- 거래 방식 선택 -->
+            <div class="form-group">
+                <label>거래 방식:</label>
+                <label><input type="radio" name="trade-method" value="직거래"> 직거래</label>
+                <label><input type="radio" name="trade-method" value="택배"> 택배</label>
+            </div>
+        </div>
+
+        <!-- 대리구매 글 양식 -->
+        <div id="delegated-form" style="display: none;">
+            <!-- 사진 첨부 -->
+            <div class="form-group">
+                <label>사진 첨부:</label>
+                <input type="file" name="photo-delegated" multiple accept="image/*" onchange="updatePhotoPreview(event, 'photo-preview-delegated')">
+                <div id="photo-preview-delegated"></div>
+            </div>
+
+            <!-- 제목 -->
+            <div class="form-group">
+                <label>제목:</label>
+                <input type="text" name="title-delegated">
+            </div>
+
+            <!-- 카테고리 선택 -->
+            <div class="form-group">
+                <label>카테고리:</label>
+                <select name="category-delegated">
+                    <option value="electronics">전자제품</option>
+                    <option value="books">도서</option>
+                    <option value="clothing">의류</option>
+                    <option value="other">기타</option>
+                </select>
+            </div>
+
+            <!-- 수고비 -->
+            <div class="form-group">
+                <label>수고비:</label>
+                <input type="number" name="fee">
+            </div>
+
+            <!-- 세부 설명 -->
+            <div class="form-group">
+                <label>세부 설명:</label>
+                <textarea name="description-delegated" rows="4"></textarea>
+            </div>
+
+            <!-- 거래 방식 선택 -->
+            <div class="form-group">
+                <label>거래 방식:</label>
+                <label><input type="radio" name="trade-method-delegated" value="직거래"> 직거래</label>
+                <label><input type="radio" name="trade-method-delegated" value="택배"> 택배</label>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>
