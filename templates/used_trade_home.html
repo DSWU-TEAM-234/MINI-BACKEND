@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>글쓰기 양식</title>
+    <script>
+        // URL에서 'signup_success'와 'login_success' 파라미터 확인하여 알림 메시지 띄움
+        function checkSignupSuccess() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const signupSuccess = urlParams.get('signup_success');
+
+            if (signupSuccess === 'True') {
+                alert("회원가입 성공!");
+            }
+        }
+
+        function checkLoginSuccess() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const loginSuccess = urlParams.get('login_success');
+
+            if (loginSuccess === 'True') {
+                alert("로그인 성공!");
+            }
+        }
+
+        // 페이지 로드 시 두 함수를 호출하여 확인
+        window.onload = function() {
+            checkSignupSuccess();
+            checkLoginSuccess();
+        };
+
+        // 글쓰기 폼을 열고, 상단 버튼과 하단 글쓰기 버튼 숨기기
+        function toggleForm() {
+            document.querySelector('.form-container').style.display = 'block'; // 폼 보여주기
+            document.querySelector('.bottom-bar').style.display = 'none';  // 글쓰기 버튼 숨기기
+            document.querySelector('.top-bar').style.display = 'none';  // 상단 회원가입, 로그인 숨기기
+            showTradeForm(); // 중고거래 폼 기본 설정
+        }
+
+        // 취소 버튼 클릭 시 폼 숨기고, 버튼들 다시 보이게
+        function cancelForm() {
+            document.querySelector('.form-container').style.display = 'none';  // 폼 숨기기
+            document.querySelector('.bottom-bar').style.display = 'block';  // 글쓰기 버튼 보이기
+            document.querySelector('.top-bar').style.display = 'block';  // 상단 회원가입, 로그인 보이기
+            document.querySelector('form').reset();  // 폼 초기화
+            document.getElementById('photo-preview').innerHTML = ''; // 사진 미리보기 초기화
+            document.getElementById('photo-preview-delegated').innerHTML = ''; // 대리구매 사진 초기화
+        }
+
+        // 중고거래 양식을 보여주는 함수
+        function showTradeForm() {
+            document.getElementById('trade-form').style.display = 'block';
+            document.getElementById('delegated-form').style.display = 'none';
+            document.querySelector('input[name="classification"][value="중고거래"]').checked = true;
+        }
+
+        // 대리구매 양식을 보여주는 함수
+        function showDelegatedForm() {
+            document.getElementById('delegated-form').style.display = 'block';
+            document.getElementById('trade-form').style.display = 'none';
+            document.querySelector('input[name="classification"][value="대리구매"]').checked = true;
+        }
+
+        // 사진 미리보기 업데이트
+        function updatePhotoPreview(event, previewId) {
+            const files = event.target.files;
+            const photoPreviewContainer = document.getElementById(previewId);
+
+            for (const file of files) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const imgElement = document.createElement('img');
+                    imgElement.src = e.target.result;
+                    const photoItem = document.createElement('div');
+                    photoItem.appendChild(imgElement);
+                    photoPreviewContainer.appendChild(photoItem);
+                }
+                reader.readAsDataURL(file);
+            }
+        }
+    </script>
+</head>
+<body>
+
+    <!-- 상단 회원가입 및 로그인 버튼 (top-bar) -->
+    <div class="top-bar" style="text-align: right; padding: 10px; background-color: #333;">
+        <a href="{{ url_for('signup') }}" style="color: white; padding: 10px; background-color: #f39c12; text-decoration: none;">회원가입</a>
+        <a href="{{ url_for('login') }}" style="color: white; padding: 10px; background-color: #f39c12; text-decoration: none;">로그인</a>
+    </div>
+
+    <!-- 하단 글쓰기 버튼 (bottom-bar) -->
+    <div class="bottom-bar" style="position: fixed; bottom: 0; width: 100%; background-color: #333; color: white; text-align: center; padding: 10px;">
+        <button onclick="toggleForm()" style="background-color: #f39c12; color: white; border: none; padding: 10px 20px;">글쓰기</button>
+    </div>
+
+    <!-- 글쓰기 폼 컨테이너 -->
+    <div class="form-container" style="display: none; padding: 20px; border: 1px solid #ddd; margin-top: 20px;">
+        <!-- 상단 취소 버튼 -->
+        <button onclick="cancelForm()" style="position: absolute; top: 10px; right: 10px; background-color: #e74c3c; color: white; padding: 8px 15px;">취소</button>
+
+        <!-- 글쓰기 폼 -->
+        <form action="/write" method="POST" enctype="multipart/form-data">
+            <!-- 글의 종류 선택 -->
+            <div>
+                <label>글의 종류:</label>
+                <label><input type="radio" name="post_type" value="중고거래" onclick="showTradeForm()"> 중고거래</label>
+                <label><input type="radio" name="post_type" value="대리구매" onclick="showDelegatedForm()"> 대리구매</label>
+            </div>
+
+            <!-- 중고거래 글 양식 -->
+            <div id="trade-form" style="display: none;">
+                <!-- 사진 첨부 -->
+                <div>
+                    <label>사진 첨부:</label>
+                    <input type="file" name="image" multiple accept="image/*" onchange="updatePhotoPreview(event, 'photo-preview')">
+                    <div id="photo-preview"></div>
+                </div>
+
+                <!-- 제목 -->
+                <div>
+                    <label>제목:</label>
+                    <input type="text" name="title" required>
+                </div>
+
+                <!-- 카테고리 선택 -->
+                <div>
+                    <label>카테고리:</label>
+                    <select name="category">
+                        <option value="electronics">전자제품</option>
+                        <option value="books">도서</option>
+                        <option value="clothing">의류</option>
+                        <option value="other">기타</option>
+                    </select>
+                </div>
+
+                <!-- 가격 -->
+                <div>
+                    <label>가격:</label>
+                    <input type="number" name="price" required>
+                </div>
+
+                <!-- 세부 설명 -->
+                <div>
+                    <label>세부 설명:</label>
+                    <textarea name="content" rows="4" required></textarea>
+                </div>
+
+                <!-- 거래 방식 선택 -->
+                <div>
+                    <label>거래 방식:</label>
+                    <label><input type="radio" name="deal_method" value="직거래"> 직거래</label>
+                    <label><input type="radio" name="deal_method" value="택배"> 택배</label>
+                </div>
+            </div>
+
+            <!-- 대리구매 글 양식 -->
+            <div id="delegated-form" style="display: none;">
+                <!-- 사진 첨부 -->
+                <div>
+                    <label>사진 첨부:</label>
+                    <input type="file" name="image" multiple accept="image/*" onchange="updatePhotoPreview(event, 'photo-preview-delegated')">
+                    <div id="photo-preview-delegated"></div>
+                </div>
+
+                <!-- 제목 -->
+                <div>
+                    <label>제목:</label>
+                    <input type="text" name="title" required>
+                </div>
+
+                <!-- 카테고리 선택 -->
+                <div>
+                    <label>카테고리:</label>
+                    <select name="category">
+                        <option value="electronics">전자제품</option>
+                        <option value="books">도서</option>
+                        <option value="clothing">의류</option>
+                        <option value="other">기타</option>
+                    </select>
+                </div>
+
+                <!-- 수고비 -->
+                <div>
+                    <label>수고비:</label>
+                    <input type="number" name="price" required>
+                </div>
+
+                <!-- 세부 설명 -->
+                <div>
+                    <label>세부 설명:</label>
+                    <textarea name="content" rows="4" required></textarea>
+                </div>
+
+                <!-- 거래 방식 선택 -->
+                <div>
+                    <label>거래 방식:</label>
+                    <label><input type="radio" name="deal_method" value="직거래"> 직거래</label>
+                    <label><input type="radio" name="deal_method" value="택배"> 택배</label>
+                </div>
+            </div>
+
+            <!-- 등록 버튼 -->
+            <button type="submit">등록</button>
+        </form>
+    </div>
+</body>
+</html>

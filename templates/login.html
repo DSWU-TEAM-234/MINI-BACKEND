@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>로그인</title>
+    <script>
+        // 페이지 로드 시 오류 메시지가 있으면 alert로 표시
+        window.onload = function() {
+            const errorMessage = "{{ error_message }}";  // 서버에서 전달된 error_message
+
+            if (errorMessage) {
+                alert(errorMessage);  // 오류 메시지가 있으면 alert로 표시
+            }
+        };
+    </script>
+</head>
+<body>
+
+    <h1>로그인</h1>
+    <form method="POST">
+        <!-- 이메일 입력 -->
+        <div>
+            <label for="email">이메일:</label>
+            <input type="email" id="email" name="email" required>
+        </div>
+
+        <!-- 비밀번호 입력 -->
+        <div>
+            <label for="password">비밀번호:</label>
+            <input type="password" id="password" name="password" required>
+        </div>
+
+        <!-- 로그인 버튼 -->
+        <div>
+            <button type="submit">로그인</button>
+        </div>
+    </form>
+
+</body>
+</html>
