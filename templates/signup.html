@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>회원가입</title>
+</head>
+<body>
+
+    <h1>회원가입</h1>
+    <form method="POST">
+        <!-- 이름 -->
+        <div>
+            <label for="name">이름:</label>
+            <input type="text" id="name" name="name" required>
+        </div>
+
+        <!-- 이메일 -->
+        <div>
+            <label for="email">이메일:</label>
+            <input type="email" id="email" name="email" required>
+        </div>
+
+        <!-- 비밀번호 -->
+        <div>
+            <label for="password">비밀번호:</label>
+            <input type="password" id="password" name="password" required>
+        </div>
+
+        <!-- 닉네임 -->
+        <div>
+            <label for="nick_name">닉네임:</label>
+            <input type="text" id="nick_name" name="nick_name" required>
+        </div>
+
+        <!-- 대학 분류 (텍스트 입력) -->
+        <div>
+            <label for="university_classification">대학교 이름:</label>
+            <input type="text" id="university_classification" name="university_classification">
+        </div>
+
+        <!-- 등록 버튼 -->
+        <button type="submit">등록</button>
+    </form>
+
+</body>
+</html>
