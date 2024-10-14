@@ -1,4 +1,4 @@
-from flask import Flask, request, render_template, redirect, url_for, session, jsonify
+from flask import Flask, request, render_template, redirect, url_for, session, jsonify, g
 import pymysql
 from datetime import timedelta
 import os
@@ -31,15 +31,22 @@ def connect_to_db():
         cursorclass=pymysql.cursors.DictCursor
     )
 
-# 전역 MySQL 연결 객체
-db_connection = None
 
-# 첫 요청 때 MySQL 연결
-@app.before_first_request
-def initialize_db():
-    global db_connection
-    db_connection = connect_to_db()
-    print("데이터베이스 연결에 성공했습니다.")
+# 요청이 시작될 때 DB 연결 설정
+@app.before_request
+def before_request():
+    if 'db_connection' not in g:
+        g.db_connection = connect_to_db()
+        print("데이터베이스 연결에 성공했습니다.")
+
+
+# 요청이 끝날 때 DB 연결 종료
+@app.teardown_request
+def teardown_request(exception):
+    db_connection = getattr(g, 'db_connection', None)
+    if db_connection is not None:
+        db_connection.close()
+        print("DB 연결 종료")
 
 
 # 처음으로 로드될 중고거래 홈 라우트
@@ -55,14 +62,9 @@ def view_mainHome():
     if not university_name or university_name == "외부인":
         university_name = "덕성여자대학교"
     
-    # 데이터베이스 연결 상태 확인
-    if db_connection and db_connection.open:
-        print("데이터베이스 연결 상태: 정상")  
-    else:
-        print("데이터베이스 연결에 문제가 있습니다.")
-    
     try:
-        with db_connection.cursor() as cursor:
+        
+        with g.db_connection.cursor() as cursor:
             # users 테이블과 posts 테이블을 조인하여 해당 대학교의 사용자들이 작성한 중고거래 게시글 가져오기
             sql = """
                 SELECT posts.*
@@ -104,14 +106,8 @@ def ProxyPurchasePage():
     if not university_name or university_name == "외부인":
         university_name = "덕성여자대학교"
     
-    # 데이터베이스 연결 상태 확인
-    if db_connection and db_connection.open:
-        print("데이터베이스 연결 상태: 정상")  
-    else:
-        print("데이터베이스 연결에 문제가 있습니다.")
-    
     try:
-        with db_connection.cursor() as cursor:
+        with g.db_connection.cursor() as cursor:
             # users 테이블과 posts 테이블을 조인하여 해당 대학교의 사용자들이 작성한 중고거래 게시글 가져오기
             sql = """
                 SELECT posts.*
@@ -143,23 +139,22 @@ def ProxyPurchasePage():
 # 메인 홈의 대학교 선택 필터에 DB에 등록된 대학 목록을 띄우기 위해 university_name 정보를 가져오기
 @app.route('/get_university_list', methods=['GET', 'POST'])
 def get_university_list():
-    # 데이터베이스 연결 상태 확인
-    if db_connection and db_connection.open:
-        print("데이터베이스 연결 상태: 정상")  
-    else:
-        print("데이터베이스 연결에 문제가 있습니다.")
-    
     try:
-            with db_connection.cursor() as cursor:
-                sql_get_university_name = """
-                SELECT university_name FROM university_and_logo
-            """
-                cursor.execute(sql_get_university_name)
-                university_names_list = cursor.fetchall()  # 결과를 가져옴
-                
-                return jsonify({
-                'university_names_list': university_names_list
-                })
+        with g.db_connection.cursor() as cursor:
+            sql_get_university_name = """
+            SELECT university_name FROM university_and_logo
+        """
+            cursor.execute(sql_get_university_name)
+            university_names_list = cursor.fetchall()  # 결과를 가져옴
+            
+            # university_name 필드만 추출하여 리스트로 변환
+            university_names = [row['university_name'] for row in university_names_list]
+        
+            print(university_names)
+            
+            return jsonify({
+            'university_names': university_names
+            })
                 
     except pymysql.MySQLError as e:
         print(f"Error: {e}")
@@ -201,15 +196,10 @@ def signup():
         else:
             profile_image_path = None
         
-        # 데이터베이스 연결 상태 확인
-        if db_connection and db_connection.open:
-            print("데이터베이스 연결 상태: 정상")  
-        else:
-            print("데이터베이스 연결에 문제가 있습니다.")
-        
         # 데이터베이스에 회원 정보 저장
         try:
-            with db_connection.cursor() as cursor:
+            # 데이터베이스 연결이 없는 경우 예외 처리
+            with g.db_connection.cursor() as cursor:
                 # 이메일 중복 확인
                 sql_check_email = "SELECT * FROM users WHERE email = %s"
                 cursor.execute(sql_check_email, (email,))
@@ -244,7 +234,7 @@ def signup():
                             INSERT INTO university_and_logo (university_name) VALUES (%s)
                         """
                         cursor.execute(sql_insert_university_name, (university_classification,))
-                        db_connection.commit()  # 변경 사항 저장
+                        g.db_connection.commit()  # 변경 사항 저장
                 
                 # 데이터 삽입 SQL 쿼리 (중복이 없는 경우)
                 sql_insert_user = """
@@ -252,7 +242,7 @@ def signup():
                     VALUES (%s, %s, %s, %s, %s, %s)
                 """
                 cursor.execute(sql_insert_user, (name, email, hashed_password, nick_name, university_classification, profile_image_path))
-                db_connection.commit()  # 변경 사항 저장
+                g.db_connection.commit()  # 변경 사항 저장
                 
                 # 회원가입 성공 시 홈 페이지로 리다이렉트하며 플래그 전달
                 return jsonify({"message": "회원가입 성공"}), 201
@@ -271,14 +261,8 @@ def login():
         email = request.form['email']
         password = request.form['password']
         
-        # 데이터베이스 연결 상태 확인
-        if db_connection and db_connection.open:
-            print("데이터베이스 연결 상태: 정상")  
-        else:
-            print("데이터베이스 연결에 문제가 있습니다.")
-        
         try:
-            with db_connection.cursor() as cursor:
+            with g.db_connection.cursor() as cursor:
                 # 사용자가 입력한 이메일이 DB에 존재하는지 확인
                 sql = "SELECT * FROM users WHERE email = %s"
                 cursor.execute(sql, (email,))
@@ -339,17 +323,14 @@ def login():
 def logout():
     print("------------------------------")
     print("로그아웃 라우트 실행")
+    
     # 세션 정보 삭제
     session.pop('user_id', None)
     session.pop('user_nickName', None)
+    session.pop('university_name', None)
+    session.pop('university_logo', None)
     
-    # 데이터베이스 연결 끊기
-    global db_connection
-    if db_connection and db_connection.open:
-        db_connection.close()
-        print("데이터베이스 연결이 끊어졌습니다.")
-    
-    # 로그아웃 후 
+    # 로그아웃 완료 메시지 반환
     return jsonify({"message": "로그아웃되었습니다."})
 
 
@@ -397,16 +378,10 @@ def write_post():
 
         image_str = ','.join(image_paths) if image_paths else None
         print(image_str)
-
-        # 데이터베이스 연결 상태 확인
-        if db_connection and db_connection.open:
-            print("데이터베이스 연결 상태: 정상")  
-        else:
-            print("데이터베이스 연결에 문제가 있습니다.")
     
         # 데이터베이스에 게시글 저장
         try:
-            with db_connection.cursor() as cursor:
+            with g.db_connection.cursor() as cursor:
                 # 데이터 삽입 SQL 쿼리
                 # 이미지 파일 이름을 문자열로 변환
                 sql = """
@@ -414,7 +389,7 @@ def write_post():
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """
                 cursor.execute(sql, (user_nickName, title, category, content, deal_method, price, image_str, post_type, user_id))
-                db_connection.commit()  # 변경 사항 저장
+                g.db_connection.commit()  # 변경 사항 저장
                 
                 print("저장완료")
                 
@@ -422,7 +397,7 @@ def write_post():
                 post_id = cursor.lastrowid  
                 
                 # 글 작성 완료 후 상세 페이지로 리다이렉트
-            return jsonify({"message": "게시글 등록 성공"}), 201
+            return redirect(url_for('post_detail', post_id=post_id))
                 
         except pymysql.MySQLError as e:
             print(f"Error: {e}")
@@ -450,14 +425,8 @@ def update_post(post_id):
         deal_method = request.form.get('deal_method')
         new_images = request.files.getlist('image')  # 이미지 파일 목록
         
-        # 데이터베이스 연결 상태 확인
-        if db_connection and db_connection.open:
-            print("데이터베이스 연결 상태: 정상")  
-        else:
-            print("데이터베이스 연결에 문제가 있습니다.")
-        
         try:
-            with db_connection.cursor() as cursor:
+            with g.db_connection.cursor() as cursor:
                 # 기존 이미지 경로 가져오기
                 sql = "SELECT image FROM posts WHERE id = %s AND user_id = %s"
                 cursor.execute(sql, (post_id, user_id))
@@ -492,7 +461,7 @@ def update_post(post_id):
                         WHERE id = %s AND user_id = %s
                     """
                     cursor.execute(update_sql, (title, category, content, deal_method, price, image_str, post_id, user_id))
-                    db_connection.commit()
+                    g.db_connection.commit()
                     
                     # 수정 완료 후 해당 게시글 상세 페이지로 리다이렉트
                     return redirect(url_for('post_detail', post_id=post_id))
@@ -511,15 +480,9 @@ def delete_post(post_id):
     # 세션이 없으면 로그인 페이지로 리다이렉트
     if not session:
         return jsonify({"message": "로그인 후 이용 가능합니다."})
-    
-    # 데이터베이스 연결 상태 확인
-    if db_connection and db_connection.open:
-        print("데이터베이스 연결 상태: 정상")
-    else:
-        print("데이터베이스 연결에 문제가 있습니다.")
-        
+
     try:
-        with db_connection.cursor() as cursor:
+        with g.db_connection.cursor() as cursor:
             # 삭제할 게시글의 이미지 경로 가져오기
             sql_select = "SELECT image FROM posts WHERE id = %s"
             cursor.execute(sql_select, (post_id,))
@@ -540,7 +503,7 @@ def delete_post(post_id):
             # 데이터베이스에서 게시글 삭제
             sql_delete = "DELETE FROM posts WHERE id = %s"
             cursor.execute(sql_delete, (post_id,))
-            db_connection.commit()  # 변경 사항 저장
+            g.db_connection.commit()  # 변경 사항 저장
             print(f"게시글 {post_id} 삭제 완료")
             
             # 삭제 완료 후 메인 페이지로 리다이렉트
@@ -556,15 +519,9 @@ def delete_post(post_id):
 def post_detail(post_id):
     print("------------------------------")
     print("게시글 상세 보기 라우트 실행")
-    
-    # 데이터베이스 연결 상태 확인
-    if db_connection and db_connection.open:
-        print("데이터베이스 연결 상태: 정상")  
-    else:
-        print("데이터베이스 연결에 문제가 있습니다.")
-    
+
     try:
-        with db_connection.cursor() as cursor:
+        with g.db_connection.cursor() as cursor:
             # post 테이블에서 특정 post_id에 따른 게시글 정보 가져오기
             sql = "SELECT * FROM posts WHERE id = %s"
             cursor.execute(sql, (post_id,))
@@ -589,14 +546,8 @@ def posts_by_university_name(university_name):
     print("------------------------------")
     print("중고거래 홈에서 특정 학교 기반 중고거래 게시글 정보 전달 라우트 실행")
     
-    # 데이터베이스 연결 상태 확인
-    if db_connection and db_connection.open:
-        print("데이터베이스 연결 상태: 정상")
-    else:
-        print("데이터베이스 연결에 문제가 있습니다.")
-        
     try:
-        with db_connection.cursor() as cursor:
+        with g.db_connection.cursor() as cursor:
             # users 테이블과 posts 테이블을 조인하여 해당 대학교의 사용자들이 작성한 게시글 가져오기
             sql = """
                 SELECT posts.*
@@ -628,14 +579,8 @@ def ProxyPurchase_posts_by_university_name(university_name):
     print("------------------------------")
     print("대리구매 홈에서 특정 학교 기반 대리구매 게시글 정보 전달 라우트 실행")
     
-    # 데이터베이스 연결 상태 확인
-    if db_connection and db_connection.open:
-        print("데이터베이스 연결 상태: 정상")
-    else:
-        print("데이터베이스 연결에 문제가 있습니다.")
-        
     try:
-        with db_connection.cursor() as cursor:
+        with g.db_connection.cursor() as cursor:
             # users 테이블과 posts 테이블을 조인하여 해당 대학교의 사용자들이 작성한 게시글 가져오기
             sql = """
                 SELECT posts.*
@@ -667,14 +612,8 @@ def posts_by_category(university_name, category):
     print("------------------------------")
     print("특정 카테고리 및 대학교 기반 게시글 정보 전달 라우트 실행")
     
-    # 데이터베이스 연결 상태 확인
-    if db_connection and db_connection.open:
-        print("데이터베이스 연결 상태: 정상")
-    else:
-        print("데이터베이스 연결에 문제가 있습니다.")
-    
     try:
-        with db_connection.cursor() as cursor:
+        with g.db_connection.cursor() as cursor:
             # users 테이블과 posts 테이블을 조인하여, 특정 대학교의 사용자들이 작성한 특정 카테고리의 게시글 가져오기
             sql = """
                 SELECT posts.*
@@ -684,6 +623,7 @@ def posts_by_category(university_name, category):
             """
             cursor.execute(sql, (university_name, category))
             posts = cursor.fetchall()
+            print(posts)
 
             # 게시글 정보를 반환
             return jsonify(posts=posts), 200
@@ -705,14 +645,9 @@ def MyPage():
     # 세션에 사용자 정보가 없으면 로그인 페이지로 리다이렉트
     if not user_id:
         return jsonify({"message": "로그인 후 이용 가능합니다."})
-    
-    if db_connection and db_connection.open:
-        print("데이터베이스 연결 상태: 정상")
-    else:
-        print("데이터베이스 연결에 문제가 있습니다.")
-    
+
     try:
-        with db_connection.cursor() as cursor:
+        with g.db_connection.cursor() as cursor:
             # posts 테이블에서 user_id에 따른 모든 중고거래 게시글 가져오기
             sql = "SELECT * FROM posts WHERE user_id = %s AND post_type = '중고거래'"
             cursor.execute(sql, (user_id,))
@@ -772,13 +707,8 @@ def MyPosts(post_type):
     if not session:
         return jsonify({"message": "로그인 후 이용 가능합니다."})
         
-    if db_connection and db_connection.open:
-        print("데이터베이스 연결 상태: 정상")
-    else:
-        print("데이터베이스 연결에 문제가 있습니다.")
-    
     try:
-        with db_connection.cursor() as cursor:
+        with g.db_connection.cursor() as cursor:
             # posts 테이블에서 post_type 따른 모든 게시글(중고거래 및 대리구매) 가져오기
             sql = "SELECT * FROM posts WHERE post_type = %s"
             cursor.execute(sql, (post_type,))
@@ -810,13 +740,8 @@ def My_bookmarked_posts():
     if not user_id:
         return jsonify({"message": "로그인 후 이용 가능합니다."})
     
-    if db_connection and db_connection.open:
-        print("데이터베이스 연결 상태: 정상")
-    else:
-        print("데이터베이스 연결에 문제가 있습니다.")
-    
     try:
-        with db_connection.cursor() as cursor:
+        with g.db_connection.cursor() as cursor:
             # users 테이블에서 user_id에 따른 bookmarked_posts 필드 가져오기
             sql = "SELECT bookmarked_posts FROM users WHERE id = %s"
             cursor.execute(sql, (user_id,))
@@ -859,14 +784,8 @@ def bookmark(post_id):
     if not user_id:
         return jsonify({"message": "로그인 후 이용 가능합니다."})
     
-    # 데이터베이스 연결 상태 확인
-    if db_connection and db_connection.open:
-        print("데이터베이스 연결 상태: 정상")
-    else:
-        print("데이터베이스 연결에 문제가 있습니다.")
-        
     try:
-        with db_connection.cursor() as cursor:
+        with g.db_connection.cursor() as cursor:
             # 1. users 테이블에서 user_id에 따른 bookmarked_posts 정보 가져오기
             sql_get_bookmarked_posts = "SELECT bookmarked_posts FROM users WHERE id = %s"
             cursor.execute(sql_get_bookmarked_posts, (user_id,))
@@ -891,7 +810,7 @@ def bookmark(post_id):
                 # 4. posts 테이블에서 해당 post_id의 bookmarked_count 필드 값 증가
                 sql_update_bookmark_count = "UPDATE posts SET bookmarked_count = bookmarked_count + 1 WHERE id = %s"
                 cursor.execute(sql_update_bookmark_count, (post_id,))
-                db_connection.commit()
+                g.db_connection.commit()
                 return jsonify(message = "찜 되었습니다.")
             else:
                 return jsonify(message = "사용자를 찾을 수 없습니다.")
@@ -913,14 +832,8 @@ def cancle_bookmark(post_id):
     if not user_id:
         return jsonify({"message": "로그인 후 이용 가능합니다."})
     
-    # 데이터베이스 연결 상태 확인
-    if db_connection and db_connection.open:
-        print("데이터베이스 연결 상태: 정상")
-    else:
-        print("데이터베이스 연결에 문제가 있습니다.")
-    
     try:
-        with db_connection.cursor() as cursor:
+        with g.db_connection.cursor() as cursor:
             # 1. users 테이블에서 user_id에 따른 bookmarked_posts 정보 가져오기
             sql_get_bookmarked_posts = "SELECT bookmarked_posts FROM users WHERE id = %s"
             cursor.execute(sql_get_bookmarked_posts, (user_id,))
@@ -942,7 +855,7 @@ def cancle_bookmark(post_id):
                     sql_update_bookmark_count = "UPDATE posts SET bookmarked_count = bookmarked_count - 1 WHERE id = %s"
                     cursor.execute(sql_update_bookmark_count, (post_id,))
                     
-                    db_connection.commit()
+                    g.db_connection.commit()
                     return jsonify({"message": "찜 취소 성공"}), 201
             else:
                 return jsonify({"message": "사용자를 찾을 수 없습니다."}), 400
@@ -958,14 +871,8 @@ def get_goods_by_university(university_name):
     print("------------------------------")
     print("대학별 굿즈 정보 가져오는 라우트 실행")
     
-    # 데이터베이스 연결 상태 확인
-    if db_connection and db_connection.open:
-        print("데이터베이스 연결 상태: 정상")
-    else:
-        print("데이터베이스 연결에 문제가 있습니다.")
-    
     try:
-        with db_connection.cursor() as cursor:
+        with g.db_connection.cursor() as cursor:
             # goods 테이블에서 university_name에 따른 굿즈 정보 가져오기
             sql_get_goods = "SELECT * FROM goods WHERE university = %s"
             cursor.execute(sql_get_goods, (university_name,))
