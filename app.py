@@ -624,7 +624,7 @@ def posts_by_university_name(university_name):
 
 # 대리구매 홈에서 특정 학교 필터 선택 시 해당 학교 관련 대리구매 게시글 정보 넘겨주는 라우트
 @app.route('/ProxyPurchase_posts_by_university_name/<string:university_name>', methods=['GET', 'POST'])
-def posts_by_university_name(university_name):
+def ProxyPurchase_posts_by_university_name(university_name):
     print("------------------------------")
     print("대리구매 홈에서 특정 학교 기반 대리구매 게시글 정보 전달 라우트 실행")
     
