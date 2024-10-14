@@ -42,11 +42,11 @@ def initialize_db():
     print("데이터베이스 연결에 성공했습니다.")
 
 
-# 홈 라우트
+# 처음으로 로드될 중고거래 홈 라우트
 @app.route('/', methods=['GET', 'POST'])
 def view_mainHome():
     print("------------------------------")
-    print("홈 라우트 실행")
+    print("중고거래 홈 라우트 실행")
     
     # 세션에서 university_name 가져오기
     university_name = session.get('university_name')
@@ -63,36 +63,108 @@ def view_mainHome():
     
     try:
         with db_connection.cursor() as cursor:
-            # users 테이블과 posts 테이블을 조인하여 해당 대학교의 사용자들이 작성한 게시글 가져오기
+            # users 테이블과 posts 테이블을 조인하여 해당 대학교의 사용자들이 작성한 중고거래 게시글 가져오기
             sql = """
                 SELECT posts.*
                 FROM posts
-                JOIN users ON posts.user_id = users.id
-                WHERE users.university_classification = %s
-            """
+        JOIN users ON posts.user_id = users.id
+        WHERE users.university_classification = %s
+        AND posts.post_type = '중고거래'
+    """
             cursor.execute(sql, (university_name,))
             posts = cursor.fetchall()
             
-            # 메인 홈의 대학교 선택 필터에 DB에 등록된 대학 목록을 띄우기 위해 university_name 정보를 가져오기
-            sql_get_university_name = """
-                SELECT university_name FROM university_and_logo
-            """
-            cursor.execute(sql_get_university_name)
-            university_names_list = cursor.fetchall()  # 결과를 가져옴
-            
             print("-----------------------------")
             print(university_name)
-            print(posts)
-            print(university_names_list)
-            
+            print(posts)            
 
             # 게시글 정보를 반환
-            # university_name(메인홈에 로드할 대학교 이름), posts(해당 대학교 회원이 작성한 게시글 정보), university_names_list(서비스에 가입한 회원들의 대학교 리스트)
-            return render_template('used_trade_home.html', university_name=university_name, posts=posts, university_names_list=university_names_list)
+            # university_name(메인홈에 로드할 대학교 이름), posts(해당 대학교 회원이 작성한 게시글 정보)
+            # university_name과 posts 데이터를 JSON 형식으로 반환
+            return jsonify({
+            'university_name': university_name,
+            'posts': posts
+            })
 
     except pymysql.MySQLError as e:
         print(f"Error: {e}")
-        return "게시글을 가져오는 중 오류가 발생했습니다.", 500
+        return jsonify({"message": "게시글을 가져오는 중 오류가 발생했습니다."}), 500
+
+
+# 처음으로 로드될 대리구매 홈 라우트
+@app.route('/ProxyPurchasePage', methods=['GET', 'POST'])
+def ProxyPurchasePage():
+    print("------------------------------")
+    print("대리구매 홈 라우트 실행")
+    
+    # 세션에서 university_name 가져오기
+    university_name = session.get('university_name')
+    
+    # 세션에 university_name이 없거나 "외부인"일 경우, 덕성여자대학교 관련 게시글 정보를 넘기기위해 "덕성여자대학교"로 지정함
+    if not university_name or university_name == "외부인":
+        university_name = "덕성여자대학교"
+    
+    # 데이터베이스 연결 상태 확인
+    if db_connection and db_connection.open:
+        print("데이터베이스 연결 상태: 정상")  
+    else:
+        print("데이터베이스 연결에 문제가 있습니다.")
+    
+    try:
+        with db_connection.cursor() as cursor:
+            # users 테이블과 posts 테이블을 조인하여 해당 대학교의 사용자들이 작성한 중고거래 게시글 가져오기
+            sql = """
+                SELECT posts.*
+                FROM posts
+        JOIN users ON posts.user_id = users.id
+        WHERE users.university_classification = %s
+        AND posts.post_type = '대리구매'
+    """
+            cursor.execute(sql, (university_name,))
+            posts = cursor.fetchall()
+            
+            print("-----------------------------")
+            print(university_name)
+            print(posts)            
+
+            # 게시글 정보를 반환
+            # university_name(메인홈에 로드할 대학교 이름), posts(해당 대학교 회원이 작성한 게시글 정보)
+            # university_name과 posts 데이터를 JSON 형식으로 반환
+            return jsonify({
+            'university_name': university_name,
+            'posts': posts
+            })
+
+    except pymysql.MySQLError as e:
+        print(f"Error: {e}")
+        return jsonify({"message": "게시글을 가져오는 중 오류가 발생했습니다."}), 500
+
+
+# 메인 홈의 대학교 선택 필터에 DB에 등록된 대학 목록을 띄우기 위해 university_name 정보를 가져오기
+@app.route('/get_university_list', methods=['GET', 'POST'])
+def get_university_list():
+    # 데이터베이스 연결 상태 확인
+    if db_connection and db_connection.open:
+        print("데이터베이스 연결 상태: 정상")  
+    else:
+        print("데이터베이스 연결에 문제가 있습니다.")
+    
+    try:
+            with db_connection.cursor() as cursor:
+                sql_get_university_name = """
+                SELECT university_name FROM university_and_logo
+            """
+                cursor.execute(sql_get_university_name)
+                university_names_list = cursor.fetchall()  # 결과를 가져옴
+                
+                return jsonify({
+                'university_names_list': university_names_list
+                })
+                
+    except pymysql.MySQLError as e:
+        print(f"Error: {e}")
+        return jsonify({"message": "정보를 가져오는 중 오류가 발생했습니다."}), 500
+
 
 
 # 회원가입 라우트
@@ -151,10 +223,14 @@ def signup():
                 # 중복된 이메일 또는 닉네임이 있을 경우
                 if email_exists:
                     message = "이미 등록된 이메일입니다."
-                    return render_template('signup.html', message=message)
+                    return jsonify({
+                'message': message
+                })
                 elif nick_name_exists:
                     message = "이미 사용 중인 닉네임입니다."
-                    return render_template('signup.html', message=message)
+                    return jsonify({
+                'message': message
+                })
                 
                 # university_classification이 None이 아닐 경우에만 university_and_logo 테이블에 중복 확인 및 저장
                 if university_classification:
@@ -177,14 +253,13 @@ def signup():
                 """
                 cursor.execute(sql_insert_user, (name, email, hashed_password, nick_name, university_classification, profile_image_path))
                 db_connection.commit()  # 변경 사항 저장
+                
+                # 회원가입 성공 시 홈 페이지로 리다이렉트하며 플래그 전달
+                return jsonify({"message": "회원가입 성공"}), 201
+    
         except pymysql.MySQLError as e:
             print(f"Error: {e}")
-            return "회원가입 실패!"
-        
-        # 회원가입 성공 시 홈 페이지로 리다이렉트하며 플래그 전달
-        message = "회원가입 성공"
-        return redirect(url_for('view_mainHome', message=message))
-
+            return jsonify({"message": "회원가입 실패"}), 500
 
 # 로그인 라우트
 @app.route('/login', methods=['GET', 'POST'])
@@ -212,8 +287,7 @@ def login():
 
                 if not user:
                     # 이메일이 존재하지 않을 때 오류 메시지 전달
-                    message = "등록된 사용자 정보가 없습니다."
-                    return render_template('login.html', message=message)
+                    return jsonify({"message": "등록된 사용자 정보가 없습니다."})
                 else:
                     # 이메일이 존재하는 경우, 비밀번호 해싱 비교
                     if bcrypt.check_password_hash(user['password'], password):
@@ -243,16 +317,22 @@ def login():
                         print(session['university_name'])
                         print(session['university_logo'])
                         
-                        # 로그인 성공 시 check_image.html로 리다이렉트
-                        message = "로그인 성공"
-                        return render_template('post_detail.html', message=message, user_id=session['user_id'], user_nickName=session['user_nickName'], profile_image=session['profile_image'], university_name=session['university_name'], university_logo=session['university_logo'])
+                        # 로그인 성공 시
+                        return jsonify({
+            'message': "로그인 성공",
+            'user_id': session['user_id'],
+            'user_nickName' : session['user_nickName'],
+            'profile_image' : session['profile_image'],
+            'university_name' : session['university_name'],
+            'university_logo' : session['university_logo']
+            })
+                        
                     else:
                         # 비밀번호가 틀렸을 때 오류 메시지 전달
-                        message = "비밀번호가 틀렸습니다. 다시 입력해주세요."
-                        return render_template('login.html', message=message)
+                        return jsonify({"message": "비밀번호가 틀렸습니다. 다시 입력해주세요."}), 400
         except pymysql.MySQLError as e:
             print(f"Error: {e}")
-            return "로그인 중 오류가 발생했습니다."
+            return jsonify({"message": "로그인 중 오류가 발생했습니다."}), 500
 
 # 로그아웃 라우트
 @app.route('/logout')
@@ -269,8 +349,8 @@ def logout():
         db_connection.close()
         print("데이터베이스 연결이 끊어졌습니다.")
     
-    # 로그아웃 후 홈 페이지로 리다이렉트
-    return redirect(url_for('view_mainHome'))
+    # 로그아웃 후 
+    return jsonify({"message": "로그아웃되었습니다."})
 
 
 # 글 작성 처리 라우트 (공통 라우트)
@@ -287,7 +367,7 @@ def write_post():
 
         # 세션에 사용자 정보가 없으면 로그인 페이지로 리다이렉트
         if not user_id or not user_nickName:
-            return redirect(url_for('login'))
+            return jsonify({"message": "로그인 후 이용 가능합니다."})
 
         # 폼 데이터 가져오기
         post_type = request.form.get('post_type')
@@ -339,14 +419,14 @@ def write_post():
                 print("저장완료")
                 
                 # 방금 작성한 게시글의 id 가져오기
-                post_id = cursor.lastrowid                
+                post_id = cursor.lastrowid  
+                
+                # 글 작성 완료 후 상세 페이지로 리다이렉트
+            return jsonify({"message": "게시글 등록 성공"}), 201
                 
         except pymysql.MySQLError as e:
             print(f"Error: {e}")
-            return "게시글 등록 실패!"
-
-        # 글 작성 완료 후 상세 페이지로 리다이렉트
-        return redirect(url_for('post_detail', post_id=post_id))
+            return jsonify({"message": "게시글 등록 실패"}), 500
 
 
 # 게시글 수정 처리 라우트
@@ -360,7 +440,7 @@ def update_post(post_id):
         
         # 세션에 user_id가 없으면 로그인 페이지로 리다이렉트
         if not user_id:
-            return redirect(url_for('login'))
+            return jsonify({"message": "로그인 후 이용 가능합니다."})
         
         # 폼 데이터 가져오기
         title = request.form.get('title')
@@ -419,7 +499,7 @@ def update_post(post_id):
                         
         except pymysql.MySQLError as e:
             print(f"Error: {e}")
-            return "게시글 수정 실패!"
+            return jsonify({"message": "게시글 수정 실패"}), 500
 
 
 # 게시글 삭제 처리 라우트
@@ -430,7 +510,7 @@ def delete_post(post_id):
     
     # 세션이 없으면 로그인 페이지로 리다이렉트
     if not session:
-        return redirect(url_for('login'))
+        return jsonify({"message": "로그인 후 이용 가능합니다."})
     
     # 데이터베이스 연결 상태 확인
     if db_connection and db_connection.open:
@@ -463,12 +543,12 @@ def delete_post(post_id):
             db_connection.commit()  # 변경 사항 저장
             print(f"게시글 {post_id} 삭제 완료")
             
+            # 삭제 완료 후 메인 페이지로 리다이렉트
+            return jsonify({"message": "게시글 삭제 성공"}), 201
+            
     except pymysql.MySQLError as e:
         print(f"Error: {e}")
-        return "게시글 삭제 실패!", 500
-
-    # 삭제 완료 후 메인 페이지로 리다이렉트
-    return redirect(url_for('view_mainHome'))
+        return jsonify({"message": "게시글 삭제 실패"}), 500
 
 
 # 게시글 상세 보기 처리 라우트
@@ -493,22 +573,21 @@ def post_detail(post_id):
             print(post)
             print("\n")
 
-            if not post:
-                return "error: 해당 게시글을 찾을 수 없습니다."
-
             # 게시글 정보를 post_detail.html로 전달하여 렌더링
-            return render_template('post_detail.html', post=post)
+            return jsonify({
+            'post': post
+            })
 
     except pymysql.MySQLError as e:
         print(f"Error: {e}")
-        return "error: 게시글을 가져오는 중 오류가 발생했습니다."
+        return jsonify({"message": "게시글을 가져오는 중 오류가 발생했습니다."}), 500
 
 
-# 특정 학교 필터 선택 시 해당 학교 관련 게시글 정보 넘겨주는 라우트
+# 중고거래 홈에서 특정 학교 필터 선택 시 해당 학교 관련 중고거래 게시글 정보 넘겨주는 라우트
 @app.route('/posts_by_university_name/<string:university_name>', methods=['GET', 'POST'])
 def posts_by_university_name(university_name):
     print("------------------------------")
-    print("특정 학교 기반 게시글 정보 전달 라우트 실행")
+    print("중고거래 홈에서 특정 학교 기반 중고거래 게시글 정보 전달 라우트 실행")
     
     # 데이터베이스 연결 상태 확인
     if db_connection and db_connection.open:
@@ -524,6 +603,7 @@ def posts_by_university_name(university_name):
                 FROM posts
                 JOIN users ON posts.user_id = users.id
                 WHERE users.university_classification = %s
+                AND posts.post_type = '중고거래'
             """
             cursor.execute(sql, (university_name,))
             posts = cursor.fetchall()
@@ -533,18 +613,59 @@ def posts_by_university_name(university_name):
             print("\n")
 
             # 게시글 정보를 반환
-            return render_template('post_detail.html', posts=posts)
+            return jsonify({
+            'posts': posts
+            })
 
     except pymysql.MySQLError as e:
         print(f"Error: {e}")
-        return "게시글을 가져오는 중 오류가 발생했습니다.", 500
+        return jsonify({"message": "게시글을 가져오는 중 오류가 발생했습니다."}), 500
+    
 
-
-# 특정 카테고리 선택 시 해당 카테고리 관련 게시글 정보 넘겨주는 라우트
-@app.route('/posts_by_category/<string:category>', methods=['GET', 'POST'])
-def posts_by_category(category):
+# 대리구매 홈에서 특정 학교 필터 선택 시 해당 학교 관련 대리구매 게시글 정보 넘겨주는 라우트
+@app.route('/ProxyPurchase_posts_by_university_name/<string:university_name>', methods=['GET', 'POST'])
+def posts_by_university_name(university_name):
     print("------------------------------")
-    print("특정 카테고리 기반 게시글 정보 전달 라우트 실행")
+    print("대리구매 홈에서 특정 학교 기반 대리구매 게시글 정보 전달 라우트 실행")
+    
+    # 데이터베이스 연결 상태 확인
+    if db_connection and db_connection.open:
+        print("데이터베이스 연결 상태: 정상")
+    else:
+        print("데이터베이스 연결에 문제가 있습니다.")
+        
+    try:
+        with db_connection.cursor() as cursor:
+            # users 테이블과 posts 테이블을 조인하여 해당 대학교의 사용자들이 작성한 게시글 가져오기
+            sql = """
+                SELECT posts.*
+                FROM posts
+                JOIN users ON posts.user_id = users.id
+                WHERE users.university_classification = %s
+                AND posts.post_type = '대리구매'
+            """
+            cursor.execute(sql, (university_name,))
+            posts = cursor.fetchall()
+            
+            print("-----------------------------")
+            print(posts)
+            print("\n")
+
+            # 게시글 정보를 반환
+            return jsonify({
+            'posts': posts
+            })
+
+    except pymysql.MySQLError as e:
+        print(f"Error: {e}")
+        return jsonify({"message": "게시글을 가져오는 중 오류가 발생했습니다."}), 500
+
+
+# 특정 카테고리 선택 시 해당 카테고리 및 대학 관련 게시글 정보 넘겨주는 라우트
+@app.route('/posts_by_category/<string:university_name>/<string:category>', methods=['GET', 'POST'])
+def posts_by_category(university_name, category):
+    print("------------------------------")
+    print("특정 카테고리 및 대학교 기반 게시글 정보 전달 라우트 실행")
     
     # 데이터베이스 연결 상태 확인
     if db_connection and db_connection.open:
@@ -554,25 +675,22 @@ def posts_by_category(category):
     
     try:
         with db_connection.cursor() as cursor:
-            # posts 테이블에서 category에 따른 게시글 가져오기
-            sql = "SELECT * FROM posts WHERE category = %s"
-            cursor.execute(sql, (category,))
+            # users 테이블과 posts 테이블을 조인하여, 특정 대학교의 사용자들이 작성한 특정 카테고리의 게시글 가져오기
+            sql = """
+                SELECT posts.*
+                FROM posts
+                JOIN users ON posts.user_id = users.id
+                WHERE users.university_classification = %s AND posts.category = %s
+            """
+            cursor.execute(sql, (university_name, category))
             posts = cursor.fetchall()
-            
-            print("-----------------------------")
-            print(posts)
-            print("\n")
-
-            # 게시글이 없을 경우
-            if not posts:
-                return "해당 카테고리의 게시글이 없습니다.", 404
 
             # 게시글 정보를 반환
-            return render_template('post_detail.html', posts=posts)
+            return jsonify(posts=posts), 200
 
     except pymysql.MySQLError as e:
         print(f"Error: {e}")
-        return "게시글을 가져오는 중 오류가 발생했습니다.", 500
+        return jsonify({"message": "게시글을 가져오는 중 오류가 발생했습니다."}), 500
 
 
 # 마이페이지 이동 시 로그인 된 사용자의 중고거래 및 대리구매 글, 찜한 게시글 정보 넘기는 라우트
@@ -586,7 +704,7 @@ def MyPage():
     
     # 세션에 사용자 정보가 없으면 로그인 페이지로 리다이렉트
     if not user_id:
-        return redirect(url_for('login'))
+        return jsonify({"message": "로그인 후 이용 가능합니다."})
     
     if db_connection and db_connection.open:
         print("데이터베이스 연결 상태: 정상")
@@ -595,10 +713,15 @@ def MyPage():
     
     try:
         with db_connection.cursor() as cursor:
-            # posts 테이블에서 user_id에 따른 모든 게시글(중고거래 및 대리구매) 가져오기
-            sql = "SELECT * FROM posts WHERE user_id = %s"
+            # posts 테이블에서 user_id에 따른 모든 중고거래 게시글 가져오기
+            sql = "SELECT * FROM posts WHERE user_id = %s AND post_type = '중고거래'"
             cursor.execute(sql, (user_id,))
-            created_posts = cursor.fetchall()
+            posts = cursor.fetchall()
+            
+            # posts 테이블에서 user_id에 따른 모든 대리구매 게시글 가져오기
+            sql = "SELECT * FROM posts WHERE user_id = %s AND post_type = '대리구매'"
+            cursor.execute(sql, (user_id,))
+            ProxyPurchase_posts = cursor.fetchall()
             
             # users 테이블에서 user_id에 따른 bookmarked_posts 필드 가져오기
             sql = "SELECT bookmarked_posts FROM users WHERE id = %s"
@@ -618,18 +741,25 @@ def MyPage():
             
             # 결과 출력 (디버깅 용도)
             print("-----------------------------")
-            print("Created Posts:", created_posts)
+            print("Posts:", posts)
+            print("\n")
+            print("-----------------------------")
+            print("ProxyPurchase_posts:", ProxyPurchase_posts)
             print("\n")
             print("-----------------------------")
             print("Bookmarked Posts:", bookmarked_post_data)
             print("\n")
 
             # 마이페이지로 작성한 글과 찜한 글 정보를 넘김
-            return render_template('mypage.html', created_posts=created_posts, bookmarked_posts=bookmarked_post_data)
-
+            return jsonify({
+            'posts': posts,
+            'ProxyPurchase_posts' : ProxyPurchase_posts,
+            'bookmarked_post_data' : bookmarked_post_data
+            })
+            
     except pymysql.MySQLError as e:
         print(f"Error: {e}")
-        return "게시글을 가져오는 중 오류가 발생했습니다.", 500
+        return jsonify({"message": "게시글을 가져오는 중에 오류가 발생했습니다."}), 500
 
 
 # 자신이 작성한 중고거래 또는 대리구매 글 자세히 보기 페이지 이동 시 로그인 된 사용자의 중고거래 및 대리구매 정보 넘기는 라우트
@@ -640,7 +770,7 @@ def MyPosts(post_type):
     
     # 세션에 사용자 정보가 없으면 로그인 페이지로 리다이렉트
     if not session:
-        return redirect(url_for('login'))
+        return jsonify({"message": "로그인 후 이용 가능합니다."})
         
     if db_connection and db_connection.open:
         print("데이터베이스 연결 상태: 정상")
@@ -660,14 +790,11 @@ def MyPosts(post_type):
             print("\n")
 
             # 중고거래 및 대리구매 상세 페이지로 작성한 글과 찜한 글 정보를 넘김
-            if post_type == "중고거래":
-                return render_template('mypage.html', created_posts=created_posts)
-            elif post_type == "대리구매":
-                return render_template('mypage.html', created_posts=created_posts)
+            return jsonify(created_posts = created_posts)
 
     except pymysql.MySQLError as e:
         print(f"Error: {e}")
-        return "게시글을 가져오는 중 오류가 발생했습니다.", 500
+        return jsonify({"message": "게시글을 가져오는 중 오류가 발생했습니다."}), 500
 
 
 # 로그인 된 사용자가 찜한 게시글 정보 넘기는 라우트
@@ -681,7 +808,7 @@ def My_bookmarked_posts():
     
     # 세션에 사용자 정보가 없으면 로그인 페이지로 리다이렉트
     if not user_id:
-        return redirect(url_for('login'))
+        return jsonify({"message": "로그인 후 이용 가능합니다."})
     
     if db_connection and db_connection.open:
         print("데이터베이스 연결 상태: 정상")
@@ -712,11 +839,11 @@ def My_bookmarked_posts():
             print("\n")
 
             # 마이페이지로 작성한 글과 찜한 글 정보를 넘김
-            return render_template('mypage.html', bookmarked_posts=bookmarked_post_data)
+            return jsonify(bookmarked_posts=bookmarked_post_data)
 
     except pymysql.MySQLError as e:
         print(f"Error: {e}")
-        return "게시글을 가져오는 중 오류가 발생했습니다.", 500
+        return jsonify({"message": "게시글을 가져오는 중 오류가 발생했습니다."}), 500
 
 
 # 찜 처리 라우트
@@ -730,7 +857,7 @@ def bookmark(post_id):
     
     # 세션에 사용자 정보가 없으면 로그인 페이지로 리다이렉트
     if not user_id:
-        return redirect(url_for('login'))
+        return jsonify({"message": "로그인 후 이용 가능합니다."})
     
     # 데이터베이스 연결 상태 확인
     if db_connection and db_connection.open:
@@ -749,8 +876,7 @@ def bookmark(post_id):
                 
                 # 2. bookmarked_posts에 현재 post_id가 이미 있는지 확인
                 if bookmarked_posts and str(post_id) in bookmarked_posts.split(','):
-                    error_message = "이미 찜 한 게시글입니다."
-                    return render_template('post_detail.html', error_message=error_message)
+                    return jsonify(message = "이미 찜 한 게시글입니다.")
                 
                 # 3. 찜하지 않은 경우 post_id를 bookmarked_posts에 추가
                 if bookmarked_posts:
@@ -765,19 +891,14 @@ def bookmark(post_id):
                 # 4. posts 테이블에서 해당 post_id의 bookmarked_count 필드 값 증가
                 sql_update_bookmark_count = "UPDATE posts SET bookmarked_count = bookmarked_count + 1 WHERE id = %s"
                 cursor.execute(sql_update_bookmark_count, (post_id,))
-                
                 db_connection.commit()
-                message = "찜 되었습니다."
-                return render_template('post_detail.html', message=message)
+                return jsonify(message = "찜 되었습니다.")
             else:
-                message = "사용자를 찾을 수 없습니다."
-                return render_template('post_detail.html', message=message)
+                return jsonify(message = "사용자를 찾을 수 없습니다.")
 
     except pymysql.MySQLError as e:
         print(f"Error: {e}")
-        error_message = "찜 처리에 실패했습니다."
-        return render_template('post_detail.html', error_message=error_message)
-
+        return jsonify({"message": "찜 처리에 실패했습니다."}), 500
 
 # 찜 취소 처리 라우트
 @app.route('/cancle_bookmark/<int:post_id>', methods=['GET', 'POST'])
@@ -790,7 +911,7 @@ def cancle_bookmark(post_id):
     
     # 세션에 사용자 정보가 없으면 로그인 페이지로 리다이렉트
     if not user_id:
-        return redirect(url_for('login'))
+        return jsonify({"message": "로그인 후 이용 가능합니다."})
     
     # 데이터베이스 연결 상태 확인
     if db_connection and db_connection.open:
@@ -822,15 +943,13 @@ def cancle_bookmark(post_id):
                     cursor.execute(sql_update_bookmark_count, (post_id,))
                     
                     db_connection.commit()
-                    return render_template('post_detail.html')
+                    return jsonify({"message": "찜 취소 성공"}), 201
             else:
-                message = "사용자를 찾을 수 없습니다."
-                return render_template('post_detail.html', message=message)
+                return jsonify({"message": "사용자를 찾을 수 없습니다."}), 400
 
     except pymysql.MySQLError as e:
         print(f"Error: {e}")
-        message = "찜 취소 처리에 실패했습니다."
-        return render_template('post_detail.html', message=message)
+        return jsonify({"message": "찜 취소를 실패했습니다."}), 500
 
 
 # 대학별 굿즈 정보 가져오는 라우트
@@ -851,11 +970,11 @@ def get_goods_by_university(university_name):
             sql_get_goods = "SELECT * FROM goods WHERE university = %s"
             cursor.execute(sql_get_goods, (university_name,))
             goods_list = cursor.fetchall()
-            return render_template('post_detail.html', goods_list=goods_list)
+            return jsonify(goods_list=goods_list)
             
     except pymysql.MySQLError as e:
         print(f"Error: {e}")
-        return "굿즈 정보를 가져올 수 없습니다."
+        return jsonify({"message": "굿즈 정보를 가져올 수 없습니다."}), 500
 
 if __name__ == '__main__':
     app.run(port=5000, debug=True)
