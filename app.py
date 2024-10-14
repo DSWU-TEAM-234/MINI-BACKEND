@@ -41,21 +41,66 @@ def initialize_db():
     db_connection = connect_to_db()
     print("데이터베이스 연결에 성공했습니다.")
 
-# check_image 라우트
-@app.route('/check_image', methods=['GET'])
-def check_image():
-    # university_logo를 세션에서 가져와 check_image.html로 전달
-    university_logo = session.get('university_logo')
-    return render_template('check_image.html', university_logo=university_logo)
 
 # 홈 라우트
-@app.route('/')
+@app.route('/', methods=['GET', 'POST'])
 def view_mainHome():
-    return render_template('used_trade_home.html')
+    print("------------------------------")
+    print("홈 라우트 실행")
+    
+    # 세션에서 university_name 가져오기
+    university_name = session.get('university_name')
+    
+    # 세션에 university_name이 없거나 "외부인"일 경우, 덕성여자대학교 관련 게시글 정보를 넘기기위해 "덕성여자대학교"로 지정함
+    if not university_name or university_name == "외부인":
+        university_name = "덕성여자대학교"
+    
+    # 데이터베이스 연결 상태 확인
+    if db_connection and db_connection.open:
+        print("데이터베이스 연결 상태: 정상")  
+    else:
+        print("데이터베이스 연결에 문제가 있습니다.")
+    
+    try:
+        with db_connection.cursor() as cursor:
+            # users 테이블과 posts 테이블을 조인하여 해당 대학교의 사용자들이 작성한 게시글 가져오기
+            sql = """
+                SELECT posts.*
+                FROM posts
+                JOIN users ON posts.user_id = users.id
+                WHERE users.university_classification = %s
+            """
+            cursor.execute(sql, (university_name,))
+            posts = cursor.fetchall()
+            
+            # 메인 홈의 대학교 선택 필터에 DB에 등록된 대학 목록을 띄우기 위해 university_name 정보를 가져오기
+            sql_get_university_name = """
+                SELECT university_name FROM university_and_logo
+            """
+            cursor.execute(sql_get_university_name)
+            university_names_list = cursor.fetchall()  # 결과를 가져옴
+            
+            print("-----------------------------")
+            print(university_name)
+            print(posts)
+            print(university_names_list)
+            
+
+            # 게시글 정보를 반환
+            # university_name(메인홈에 로드할 대학교 이름), posts(해당 대학교 회원이 작성한 게시글 정보), university_names_list(서비스에 가입한 회원들의 대학교 리스트)
+            return render_template('used_trade_home.html', university_name=university_name, posts=posts, university_names_list=university_names_list)
+
+    except pymysql.MySQLError as e:
+        print(f"Error: {e}")
+        return "게시글을 가져오는 중 오류가 발생했습니다.", 500
+
 
 # 회원가입 라우트
 @app.route('/signup', methods=['GET', 'POST'])
 def signup():
+    print("------------------------------")
+    print("회원가입 라우트 실행")
+    
     if request.method == 'POST':
         # 폼 데이터 가져오기
         name = request.form['name']
@@ -71,10 +116,6 @@ def signup():
         
         # 비밀번호 해싱 처리
         hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
-        
-        # 대학교 이름이 입력되지 않았을 경우 외부인으로 설정
-        if not university_classification:
-            university_classification = "외부인"
         
         profile_image = request.files.get('profile_image')  # 한 장의 프로필 이미지 파일
         
@@ -109,11 +150,11 @@ def signup():
                 
                 # 중복된 이메일 또는 닉네임이 있을 경우
                 if email_exists:
-                    error_message = "이미 등록된 이메일입니다."
-                    return render_template('signup.html', error_message=error_message)
+                    message = "이미 등록된 이메일입니다."
+                    return render_template('signup.html', message=message)
                 elif nick_name_exists:
-                    error_message = "이미 사용 중인 닉네임입니다."
-                    return render_template('signup.html', error_message=error_message)
+                    message = "이미 사용 중인 닉네임입니다."
+                    return render_template('signup.html', message=message)
                 
                 # university_classification이 None이 아닐 경우에만 university_and_logo 테이블에 중복 확인 및 저장
                 if university_classification:
@@ -141,14 +182,15 @@ def signup():
             return "회원가입 실패!"
         
         # 회원가입 성공 시 홈 페이지로 리다이렉트하며 플래그 전달
-        return redirect(url_for('view_mainHome', signup_success=True))
+        message = "회원가입 성공"
+        return redirect(url_for('view_mainHome', message=message))
 
-    # GET 요청 시 회원가입 페이지 렌더링
-    return render_template('signup.html')
 
 # 로그인 라우트
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+    print("------------------------------")
+    print("로그인 라우트 실행")
     if request.method == 'POST':
         # 폼 데이터 가져오기
         email = request.form['email']
@@ -170,14 +212,15 @@ def login():
 
                 if not user:
                     # 이메일이 존재하지 않을 때 오류 메시지 전달
-                    error_message = "등록된 사용자 정보가 없습니다."
-                    return render_template('login.html', error_message=error_message)
+                    message = "등록된 사용자 정보가 없습니다."
+                    return render_template('login.html', message=message)
                 else:
                     # 이메일이 존재하는 경우, 비밀번호 해싱 비교
                     if bcrypt.check_password_hash(user['password'], password):
                         # 비밀번호가 일치하면 로그인 성공
                         session['user_id'] = user['id']  # 세션에 사용자 id 저장 
                         session['user_nickName'] = user['nick_name']  # 세션에 사용자 닉네임 저장
+                        session['profile_image'] = user['profile_image'] # 세션에 사용자 프로필 이미지 경로 저장
                         
                         # 사용자의 isAccepted 여부에 따라 세션에 university_name 저장 (비인증 시 외부인으로)
                         if user['isAccepted'] == "인증":
@@ -200,25 +243,22 @@ def login():
                         print(session['university_name'])
                         print(session['university_logo'])
                         
-                        # login_success 파라미터를 True로 설정하여 홈으로 리다이렉트
-                        #return redirect(url_for('view_mainHome', login_success=True))
                         # 로그인 성공 시 check_image.html로 리다이렉트
-                        return redirect(url_for('check_image'))
+                        message = "로그인 성공"
+                        return render_template('post_detail.html', message=message, user_id=session['user_id'], user_nickName=session['user_nickName'], profile_image=session['profile_image'], university_name=session['university_name'], university_logo=session['university_logo'])
                     else:
                         # 비밀번호가 틀렸을 때 오류 메시지 전달
-                        error_message = "비밀번호가 틀렸습니다. 다시 입력해주세요."
-                        return render_template('login.html', error_message=error_message)
+                        message = "비밀번호가 틀렸습니다. 다시 입력해주세요."
+                        return render_template('login.html', message=message)
         except pymysql.MySQLError as e:
             print(f"Error: {e}")
-            error_message = "로그인 중 오류가 발생했습니다."
-            return render_template('login.html', error_message=error_message)
-    
-    # GET 요청 시 로그인 페이지 렌더링
-    return render_template('login.html')
+            return "로그인 중 오류가 발생했습니다."
 
 # 로그아웃 라우트
 @app.route('/logout')
 def logout():
+    print("------------------------------")
+    print("로그아웃 라우트 실행")
     # 세션 정보 삭제
     session.pop('user_id', None)
     session.pop('user_nickName', None)
@@ -232,34 +272,11 @@ def logout():
     # 로그아웃 후 홈 페이지로 리다이렉트
     return redirect(url_for('view_mainHome'))
 
-# 메인 홈의 대학교 선택 필터에서 DB에 등록된 대학 목록을 띄우기 위해 university_name 정보를 넘겨주는 라우트
-@app.route('/university_list', methods=['GET'])
-def university_list():
-    # 데이터베이스 연결 상태 확인
-    if db_connection and db_connection.open:
-        print("데이터베이스 연결 상태: 정상")  
-    else:
-        print("데이터베이스 연결에 문제가 있습니다.")
-        
-    # university_and_logo 테이블에서 university_name 정보만 가져오기
-        try:
-            with db_connection.cursor() as cursor:
-                sql_get_university_name = """
-                    SELECT university_name FROM university_and_logo
-                """
-                cursor.execute(sql_get_university_name)
-                university_names = cursor.fetchall()  # 결과를 가져옴
-        except pymysql.MySQLError as e:
-            print(f"Error: {e}")
-            return "error: 데이터 조회 실패!"
-        
-    # university_names 리스트를 JSON으로 반환
-    return university_names
 
 # 글 작성 처리 라우트 (공통 라우트)
-@app.route('/write_post', methods=['POST'])
+@app.route('/write_post', methods=['GET', 'POST'])
 def write_post():
-    if request.method == 'POST':
+        print("------------------------------")
         print("글 작성 라우트 실행")
         # 세션에서 user_id 및 user_nickName 정보 가져오기
         user_id = session.get('user_id')
@@ -328,13 +345,16 @@ def write_post():
             print(f"Error: {e}")
             return "게시글 등록 실패!"
 
-        # 글 작성 완료 후 메인 페이지로 리다이렉트
+        # 글 작성 완료 후 상세 페이지로 리다이렉트
         return redirect(url_for('post_detail', post_id=post_id))
 
+
 # 게시글 수정 처리 라우트
-@app.route('/update_post/<int:post_id>', methods=['POST'])
+@app.route('/update_post/<int:post_id>', methods=['GET', 'POST'])
 def update_post(post_id):
-    if request.method == 'POST':
+        print("------------------------------")
+        print("글 수정 라우트 실행")
+        
         # 세션에서 user_id 가져오기
         user_id = session.get('user_id')
         
@@ -393,17 +413,25 @@ def update_post(post_id):
                     """
                     cursor.execute(update_sql, (title, category, content, deal_method, price, image_str, post_id, user_id))
                     db_connection.commit()
+                    
+                    # 수정 완료 후 해당 게시글 상세 페이지로 리다이렉트
+                    return redirect(url_for('post_detail', post_id=post_id))
                         
         except pymysql.MySQLError as e:
             print(f"Error: {e}")
             return "게시글 수정 실패!"
-    
-    # 수정 완료 후 해당 게시글 상세 페이지로 리다이렉트
-    return redirect(url_for('read', post_id=post_id))
+
 
 # 게시글 삭제 처리 라우트
-@app.route('/delete_post/<int:post_id>', methods=['POST'])
+@app.route('/delete_post/<int:post_id>', methods=['GET', 'POST'])
 def delete_post(post_id):
+    print("------------------------------")
+    print("글 삭제 라우트 실행")
+    
+    # 세션이 없으면 로그인 페이지로 리다이렉트
+    if not session:
+        return redirect(url_for('login'))
+    
     # 데이터베이스 연결 상태 확인
     if db_connection and db_connection.open:
         print("데이터베이스 연결 상태: 정상")
@@ -442,9 +470,13 @@ def delete_post(post_id):
     # 삭제 완료 후 메인 페이지로 리다이렉트
     return redirect(url_for('view_mainHome'))
 
+
 # 게시글 상세 보기 처리 라우트
 @app.route('/post_detail/<int:post_id>', methods=['GET', 'POST'])
 def post_detail(post_id):
+    print("------------------------------")
+    print("게시글 상세 보기 라우트 실행")
+    
     # 데이터베이스 연결 상태 확인
     if db_connection and db_connection.open:
         print("데이터베이스 연결 상태: 정상")  
@@ -457,6 +489,9 @@ def post_detail(post_id):
             sql = "SELECT * FROM posts WHERE id = %s"
             cursor.execute(sql, (post_id,))
             post = cursor.fetchone()
+            
+            print(post)
+            print("\n")
 
             if not post:
                 return "error: 해당 게시글을 찾을 수 없습니다."
@@ -468,9 +503,13 @@ def post_detail(post_id):
         print(f"Error: {e}")
         return "error: 게시글을 가져오는 중 오류가 발생했습니다."
 
+
 # 특정 학교 필터 선택 시 해당 학교 관련 게시글 정보 넘겨주는 라우트
 @app.route('/posts_by_university_name/<string:university_name>', methods=['GET', 'POST'])
 def posts_by_university_name(university_name):
+    print("------------------------------")
+    print("특정 학교 기반 게시글 정보 전달 라우트 실행")
+    
     # 데이터베이스 연결 상태 확인
     if db_connection and db_connection.open:
         print("데이터베이스 연결 상태: 정상")
@@ -491,10 +530,7 @@ def posts_by_university_name(university_name):
             
             print("-----------------------------")
             print(posts)
-
-            # 게시글이 없을 경우
-            if not posts:
-                return "해당 대학교의 게시글이 없습니다.", 404
+            print("\n")
 
             # 게시글 정보를 반환
             return render_template('post_detail.html', posts=posts)
@@ -503,9 +539,13 @@ def posts_by_university_name(university_name):
         print(f"Error: {e}")
         return "게시글을 가져오는 중 오류가 발생했습니다.", 500
 
+
 # 특정 카테고리 선택 시 해당 카테고리 관련 게시글 정보 넘겨주는 라우트
 @app.route('/posts_by_category/<string:category>', methods=['GET', 'POST'])
 def posts_by_category(category):
+    print("------------------------------")
+    print("특정 카테고리 기반 게시글 정보 전달 라우트 실행")
+    
     # 데이터베이스 연결 상태 확인
     if db_connection and db_connection.open:
         print("데이터베이스 연결 상태: 정상")
@@ -521,6 +561,7 @@ def posts_by_category(category):
             
             print("-----------------------------")
             print(posts)
+            print("\n")
 
             # 게시글이 없을 경우
             if not posts:
@@ -533,11 +574,19 @@ def posts_by_category(category):
         print(f"Error: {e}")
         return "게시글을 가져오는 중 오류가 발생했습니다.", 500
 
+
 # 마이페이지 이동 시 로그인 된 사용자의 중고거래 및 대리구매 글, 찜한 게시글 정보 넘기는 라우트
 @app.route('/MyPage', methods=['GET', 'POST'])
 def MyPage():
+    print("------------------------------")
+    print("마이페이지 라우트 실행")
+    
     # 세션에서 user_id 정보 가져오기
     user_id = session.get('user_id')
+    
+    # 세션에 사용자 정보가 없으면 로그인 페이지로 리다이렉트
+    if not user_id:
+        return redirect(url_for('login'))
     
     if db_connection and db_connection.open:
         print("데이터베이스 연결 상태: 정상")
@@ -570,8 +619,10 @@ def MyPage():
             # 결과 출력 (디버깅 용도)
             print("-----------------------------")
             print("Created Posts:", created_posts)
+            print("\n")
             print("-----------------------------")
             print("Bookmarked Posts:", bookmarked_post_data)
+            print("\n")
 
             # 마이페이지로 작성한 글과 찜한 글 정보를 넘김
             return render_template('mypage.html', created_posts=created_posts, bookmarked_posts=bookmarked_post_data)
@@ -580,12 +631,17 @@ def MyPage():
         print(f"Error: {e}")
         return "게시글을 가져오는 중 오류가 발생했습니다.", 500
 
-# 자신이 작성한 중고거래 및 대리구매 글 자세히 보기 페이지 이동 시 로그인 된 사용자의 중고거래 및 대리구매 정보 넘기는 라우트
+
+# 자신이 작성한 중고거래 또는 대리구매 글 자세히 보기 페이지 이동 시 로그인 된 사용자의 중고거래 및 대리구매 정보 넘기는 라우트
 @app.route('/MyPosts/<string:post_type>', methods=['GET', 'POST'])
 def MyPosts(post_type):
-    # 세션에서 user_id 정보 가져오기
-    user_id = session.get('user_id')
+    print("------------------------------")
+    print("자신이 작성한 중고거래 또는 대리구매 글 정보 전달 라우트 실행")
     
+    # 세션에 사용자 정보가 없으면 로그인 페이지로 리다이렉트
+    if not session:
+        return redirect(url_for('login'))
+        
     if db_connection and db_connection.open:
         print("데이터베이스 연결 상태: 정상")
     else:
@@ -601,6 +657,7 @@ def MyPosts(post_type):
             # 결과 출력 (디버깅 용도)
             print("-----------------------------")
             print("Created Posts:", created_posts)
+            print("\n")
 
             # 중고거래 및 대리구매 상세 페이지로 작성한 글과 찜한 글 정보를 넘김
             if post_type == "중고거래":
@@ -612,11 +669,19 @@ def MyPosts(post_type):
         print(f"Error: {e}")
         return "게시글을 가져오는 중 오류가 발생했습니다.", 500
 
+
 # 로그인 된 사용자가 찜한 게시글 정보 넘기는 라우트
 @app.route('/My_bookmarked_posts', methods=['GET', 'POST'])
 def My_bookmarked_posts():
+    print("------------------------------")
+    print("로그인 된 사용자가 찜한 게시글 정보 넘기는 라우트 실행")
+    
     # 세션에서 user_id 정보 가져오기
     user_id = session.get('user_id')
+    
+    # 세션에 사용자 정보가 없으면 로그인 페이지로 리다이렉트
+    if not user_id:
+        return redirect(url_for('login'))
     
     if db_connection and db_connection.open:
         print("데이터베이스 연결 상태: 정상")
@@ -644,6 +709,7 @@ def My_bookmarked_posts():
             # 결과 출력 (디버깅 용도)
             print("-----------------------------")
             print("Bookmarked Posts:", bookmarked_post_data)
+            print("\n")
 
             # 마이페이지로 작성한 글과 찜한 글 정보를 넘김
             return render_template('mypage.html', bookmarked_posts=bookmarked_post_data)
@@ -656,12 +722,15 @@ def My_bookmarked_posts():
 # 찜 처리 라우트
 @app.route('/bookmark/<int:post_id>', methods=['GET', 'POST'])
 def bookmark(post_id):
+    print("------------------------------")
+    print("찜 처리 라우트 실행")
+    
     # 세션에서 user_id 가져오기
     user_id = session.get('user_id')
     
-    # 세션에 사용자 정보가 없으면 해당 게시글 상세 페이지로 리다이렉트
-    if not user_id or not user_id:
-        return render_template('post_detail.html')
+    # 세션에 사용자 정보가 없으면 로그인 페이지로 리다이렉트
+    if not user_id:
+        return redirect(url_for('login'))
     
     # 데이터베이스 연결 상태 확인
     if db_connection and db_connection.open:
@@ -698,25 +767,95 @@ def bookmark(post_id):
                 cursor.execute(sql_update_bookmark_count, (post_id,))
                 
                 db_connection.commit()
-                error_message = "찜 되었습니다."
-                return render_template('post_detail.html', error_message=error_message)
+                message = "찜 되었습니다."
+                return render_template('post_detail.html', message=message)
             else:
-                error_message = "사용자를 찾을 수 없습니다."
-                return render_template('post_detail.html', error_message=error_message)
+                message = "사용자를 찾을 수 없습니다."
+                return render_template('post_detail.html', message=message)
 
     except pymysql.MySQLError as e:
         print(f"Error: {e}")
         error_message = "찜 처리에 실패했습니다."
         return render_template('post_detail.html', error_message=error_message)
 
-    # 찜 처리 완료 후 해당 게시글 상세 페이지로 리다이렉트
-    return redirect('post_detail.html', post_id=post_id)
+
+# 찜 취소 처리 라우트
+@app.route('/cancle_bookmark/<int:post_id>', methods=['GET', 'POST'])
+def cancle_bookmark(post_id):
+    print("------------------------------")
+    print("찜 취소 라우트 실행")
+    
+    # 세션에서 user_id 가져오기
+    user_id = session.get('user_id')
+    
+    # 세션에 사용자 정보가 없으면 로그인 페이지로 리다이렉트
+    if not user_id:
+        return redirect(url_for('login'))
+    
+    # 데이터베이스 연결 상태 확인
+    if db_connection and db_connection.open:
+        print("데이터베이스 연결 상태: 정상")
+    else:
+        print("데이터베이스 연결에 문제가 있습니다.")
+    
+    try:
+        with db_connection.cursor() as cursor:
+            # 1. users 테이블에서 user_id에 따른 bookmarked_posts 정보 가져오기
+            sql_get_bookmarked_posts = "SELECT bookmarked_posts FROM users WHERE id = %s"
+            cursor.execute(sql_get_bookmarked_posts, (user_id,))
+            result = cursor.fetchone()
+            
+            if result:
+                bookmarked_posts = result['bookmarked_posts']
+                
+                # 2. bookmarked_posts에 현재 post_id가 있는지 확인 (찜한 게시물인지)
+                if bookmarked_posts and str(post_id) in bookmarked_posts.split(','):
+                    # 3. post_id를 bookmarked_posts에서 제거
+                    updated_bookmarked_posts = ','.join([p for p in bookmarked_posts.split(',') if p != str(post_id)])
+                    
+                    # users 테이블의 bookmarked_posts 업데이트
+                    sql_update_bookmarked_posts = "UPDATE users SET bookmarked_posts = %s WHERE id = %s"
+                    cursor.execute(sql_update_bookmarked_posts, (updated_bookmarked_posts, user_id))
+
+                    # 4. posts 테이블에서 해당 post_id의 bookmarked_count 필드 값 감소
+                    sql_update_bookmark_count = "UPDATE posts SET bookmarked_count = bookmarked_count - 1 WHERE id = %s"
+                    cursor.execute(sql_update_bookmark_count, (post_id,))
+                    
+                    db_connection.commit()
+                    return render_template('post_detail.html')
+            else:
+                message = "사용자를 찾을 수 없습니다."
+                return render_template('post_detail.html', message=message)
+
+    except pymysql.MySQLError as e:
+        print(f"Error: {e}")
+        message = "찜 취소 처리에 실패했습니다."
+        return render_template('post_detail.html', message=message)
 
 
-
-
-
-
+# 대학별 굿즈 정보 가져오는 라우트
+@app.route('/get_goods_by_university/<string:university_name>', methods=['GET', 'POST'])
+def get_goods_by_university(university_name):
+    print("------------------------------")
+    print("대학별 굿즈 정보 가져오는 라우트 실행")
+    
+    # 데이터베이스 연결 상태 확인
+    if db_connection and db_connection.open:
+        print("데이터베이스 연결 상태: 정상")
+    else:
+        print("데이터베이스 연결에 문제가 있습니다.")
+    
+    try:
+        with db_connection.cursor() as cursor:
+            # goods 테이블에서 university_name에 따른 굿즈 정보 가져오기
+            sql_get_goods = "SELECT * FROM goods WHERE university = %s"
+            cursor.execute(sql_get_goods, (university_name,))
+            goods_list = cursor.fetchall()
+            return render_template('post_detail.html', goods_list=goods_list)
+            
+    except pymysql.MySQLError as e:
+        print(f"Error: {e}")
+        return "굿즈 정보를 가져올 수 없습니다."
 
 if __name__ == '__main__':
     app.run(port=5000, debug=True)
