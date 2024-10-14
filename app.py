@@ -1,9 +1,13 @@
 from flask import Flask, request, render_template, redirect, url_for, session, jsonify
 import pymysql
 from datetime import timedelta
+import time
 import os
 import uuid
 from flask_bcrypt import Bcrypt
+from flask_socketio import SocketIO, emit, join_room, leave_room
+# import psycopg2
+# from psycopg2.extras import RealDictCursor
 
 app = Flask(__name__)
 bcrypt = Bcrypt(app)
@@ -13,6 +17,9 @@ app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=1)  # 세션 지속 �
 
 UPLOAD_FOLDER = 'static/uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+socketio = SocketIO(app, cors_allowed_origins="*")
+
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
@@ -30,6 +37,16 @@ def connect_to_db():
         charset='utf8mb4',
         cursorclass=pymysql.cursors.DictCursor
     )
+
+# pgAdmin 연결
+# def connect_to_db():
+#     return psycopg2.connect(
+#         host='127.0.0.1',
+#         user='postgres',
+#         password='postgres',
+#         database='miniProjects',
+#         cursor_factory=RealDictCursor
+#     )
 
 # 전역 MySQL 연결 객체
 db_connection = None
@@ -712,11 +729,259 @@ def bookmark(post_id):
     # 찜 처리 완료 후 해당 게시글 상세 페이지로 리다이렉트
     return redirect('post_detail.html', post_id=post_id)
 
+@app.route('/chat/<int:chat_id>', methods=['GET'])
+def get_messages(chat_id):
+  db_connection = connect_to_db()
+  cursor = db_connection.cursor()
+  
+  query = "SELECT * FROM messages WHERE chat_id = %s"
+  cursor.execute(query, (chat_id,))
+  messages = cursor.fetchall()
+
+  result = [{
+      'id': msg['id'],
+      'sender_id': msg['sender_id'],
+      'message_text': msg['message_text'],
+      'message_type': msg['message_type'],
+      'created_at': msg['created_at'],
+      'is_read': msg['is_read']
+  } for msg in messages]
+
+  db_connection.close()
+
+  return jsonify(result), 200
+
+
+# 사용자가 포함되어있는 채팅방 불러오는 API 
+# 용도: [글쓰기] 메뉴탭 클릭 시 채팅방 사용자가 포함되어있는 채팅방 목록 보여야된다. 
+@app.route('/chatrooms/<int:user_id>', methods=['GET'])
+def get_chattingRooms(user_id):
+  # 데이터베이스 연결
+  db_connection = connect_to_db()
+  cursor = db_connection.cursor()
+
+  # SQL 쿼리문 작성 (user_id가 포함된 채팅방 조회)
+  query = """
+      SELECT chat_room.id, chat_room.name
+      FROM chat_member
+      JOIN chat_room ON chat_member.chat_id = chat_room.id
+      WHERE chat_member.user_id = %s
+  """
+  
+  # 쿼리 실행
+  cursor.execute(query, (user_id,))
+  
+  # 결과 가져오기
+  chat_rooms = cursor.fetchall()
+
+  cursor.close()
+  db_connection.close()
+  
+  # JSON 응답 생성
+  result = []
+  for chat_room in chat_rooms:
+      result.append({
+          'chat_id': chat_room['id'],
+          'name': chat_room['name']
+      })
+
+  return jsonify(result), 200
+    
+@socketio.on("connect")
+def handle_connect():
+    """
+    클라이언트 연결 시 호출
+    """
+    print("Client connected")
+
+
+@socketio.on("disconnect")
+def handle_disconnect():
+    """
+    클라이언트 연결 해제 시 호출
+    """
+    print("Client disconnected")
+
+
+@socketio.on("join")
+def on_join(data):
+    room_name = data["room"]
+
+    # TODO: user_id 나중에 토큰(?)에 저장된 값으로 불러오게 변경. 
+    # user_id = session.get('user_id')
+    user_id = 2
+
+    db_connection = connect_to_db()
+    cursor = db_connection.cursor()
+
+    # 1. 채팅방이 존재하는지 확인
+    check_chat_room_query = """
+        SELECT id FROM chat_room WHERE name = %s
+    """
+    cursor.execute(check_chat_room_query, (room_name,))
+    chat_room = cursor.fetchone()
+
+    # 2. 채팅방이 없으면 새로 생성
+    if not chat_room:
+        create_chat_room_query = """
+            INSERT INTO chat_room (name) VALUES (%s) RETURNING id
+        """
+        cursor.execute(create_chat_room_query, (room_name,))
+        db_connection.commit()
+        chat_room = cursor.fetchone()
+
+    chat_room_id = chat_room['id']
+
+    # 3. 사용자가 이미 이 방에 참여했는지 확인
+    check_chat_member_query = """
+        SELECT id FROM chat_member WHERE chat_id = %s AND user_id = %s
+    """
+    cursor.execute(check_chat_member_query, (chat_room_id, user_id))
+    chat_member = cursor.fetchone()
+
+    # 4. 참여하지 않았으면 ChatMember 테이블에 추가
+    if not chat_member:
+        insert_chat_member_query = """
+            INSERT INTO chat_member (chat_id, user_id) VALUES (%s, %s)
+        """
+        cursor.execute(insert_chat_member_query, (chat_room_id, user_id))
+        db_connection.commit()
+
+    # 5. 클라이언트를 소켓 채팅방에 참여시킴
+    join_room(room_name)
+
+    # 6. 클라이언트에게 알림 전송
+    emit("status", {"msg": f"User {user_id} has joined the room: {room_name}"}, room=room_name)
+
+    # 데이터베이스 연결 해제
+    cursor.close()
+    db_connection.close()
 
 
 
+@socketio.on("leave")
+def on_leave(data):
+    """
+    클라이언트가 채팅방을 나갈 때 호출되는 이벤트 핸들러입니다.
+
+    Args:
+        data (dict): 클라이언트로부터 받은 데이터. 'room' 키를 포함해야 합니다.
+    """
+    room = data["room"]
+    leave_room(room)
+    emit("status", {"msg": f"User has left the room: {room}"}, room=room)
+
+
+@socketio.on("chat")
+def handle_chat(data):
+    """
+    채팅 메시지를 처리하는 이벤트 핸들러입니다.
+
+    Args:
+        data (dict): 클라이언트로부터 받은 데이터. 'room', 'message', 'from' 키를 포함해야 합니다.
+    """
+
+    # user_id = session.get('user_id')
+    user_id = 2
+
+    room_name = data["room"]  # 클라이언트로부터 받은 room (이름)
+    message = data["message"]
+    from_id = data["from"] 
+
+    print("chat 소켓 값 확인: ", room_name)
+
+    # 데이터베이스 연결
+    db_connection = connect_to_db()
+    cursor = db_connection.cursor()
+
+    # 채팅방 이름(room_name)을 바탕으로 DB에서 chat_id 조회
+    check_chat_room_query = """
+        SELECT id FROM chat_room WHERE name = %s
+    """
+    cursor.execute(check_chat_room_query, (room_name,))
+    chat_room = cursor.fetchone()
+
+    if chat_room:
+        chat_id = chat_room['id']  # chat_id를 얻음
+    else:
+        # 해당 room이 없을 경우 처리 (예: 에러 메시지 반환)
+        print("채팅방을 찾을 수 없습니다.")
+        cursor.close()
+        db_connection.close()
+        return
+
+    # 메시지를 DB에 저장
+    insert_message_query = """
+        INSERT INTO messages (chat_id, sender_id, message_text, message_type, created_at)
+        VALUES (%s, %s, %s, %s, %s) RETURNING id
+    """
+    cursor.execute(insert_message_query, (chat_id, user_id, message, 'text', datetime.now()))
+    db_connection.commit()
+    
+    # 새로 저장된 메시지 ID 가져오기
+    message_id= cursor.fetchone()['id']
+
+    # json 타입으로 직렬화하기 
+    message_data = {
+        "type": "chat",
+        "message": message,
+        "from": from_id,
+        "created_at": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),  # 현재 시간
+        "message_id": message_id  # 메시지 ID 추가
+    }
+
+    # 클라이언트로 메시지 전송
+    emit("chat", message_data, room=room_name)
+    print(data)
+
+    # 데이터베이스 연결 해제
+    cursor.close()
+    db_connection.close()
+
+@socketio.on("location")
+def handle_location(data):
+    """
+    위치 정보를 처리하는 이벤트 핸들러입니다.
+
+    Args:
+        data (dict): 클라이언트로부터 받은 데이터. 'room', 'location', 'from' 키를 포함해야 합니다.
+    """
+    room = data["room"]
+    location = data["location"]
+    from_id = data["from"]
+    emit(
+        "location",
+        {"type": "location", "location": location, "from": from_id},
+        room=room,
+    )
+
+
+@socketio.on("real_time_location")
+def handle_real_time_location(data):
+    """
+    실시간 위치 정보를 처리하는 이벤트 핸들러입니다.
+
+    Args:
+        data (dict): 클라이언트로부터 받은 데이터. 'room', 'location', 'from' 키를 포함해야 합니다.
+    """
+    room = data["room"]
+    location = data["location"]
+    from_id = data["from"]
+    timestamp = int(time.time() * 1000)  # 현재 시간을 밀리초로 변환
+    emit(
+        "real_time_location",
+        {
+            "type": "real_time_location",
+            "location": location,
+            "from": from_id,
+            "timestamp": timestamp,
+        },
+        room=room,
+        include_self=False,  # 자신을 제외한 다른 클라이언트에게만 전송
+    )
 
 
 
 if __name__ == '__main__':
+    socketio.run(app, debug=True)
     app.run(port=5000, debug=True)
